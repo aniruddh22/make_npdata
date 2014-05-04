@@ -535,11 +535,25 @@ void validate_npd_hashes(const char* file_name, unsigned char *klicensee, NPD_HE
 
 	int file_name_length = strlen(file_name);
 	unsigned char *buf = (unsigned char *) malloc (0x30 + file_name_length);
+	unsigned char dev[0x60];
 	unsigned char key[0x10];
+	memset(dev, 0, 0x60);
+	memset(key, 0, 0x10);
 
-	// Build the buffer (content_id + file_name).
+	// Build the title buffer (content_id + file_name).
 	memcpy(buf, npd->content_id, 0x30);
 	memcpy(buf + 0x30, file_name, file_name_length);
+
+	// Build the dev buffer (first 0x60 bytes of NPD header in big-endian).
+	memcpy(dev, npd, 0x60);
+
+	// Fix endianness.
+	int version = se32(npd->version);
+	int license = se32(npd->license);
+	int type = se32(npd->type);
+	memcpy(dev + 0x4, &version, 4);
+	memcpy(dev + 0x8, &license, 4);
+	memcpy(dev + 0xC, &type, 4);
 
 	// Hash with NPDRM_OMAC_KEY_3 and compare with title_hash.
 	title_hash_result = cmac_hash_compare(NPDRM_OMAC_KEY_3, 0x10, buf, 0x30 + file_name_length, npd->title_hash);
@@ -575,7 +589,7 @@ void validate_npd_hashes(const char* file_name, unsigned char *klicensee, NPD_HE
 		xor(key, klicensee, NPDRM_OMAC_KEY_2, 0x10);
 
 		// Hash with generated key and compare with dev_hash.
-		dev_hash_result = cmac_hash_compare(key, 0x10, (unsigned char *)npd, 0x60, npd->dev_hash);
+		dev_hash_result = cmac_hash_compare(key, 0x10, dev, 0x60, npd->dev_hash);
 
 		if (verbose)
 		{
@@ -937,7 +951,7 @@ void forge_npd_title_hash(const char* file_name, NPD_HEADER *npd)
 	unsigned char title_hash[0x10];
 	memset(title_hash, 0, 0x10);
 
-	// Build the buffer (content_id + file_name).
+	// Build the title buffer (content_id + file_name).
 	memcpy(buf, npd->content_id, 0x30);
 	memcpy(buf + 0x30, file_name, file_name_length);
 
@@ -953,15 +967,28 @@ void forge_npd_title_hash(const char* file_name, NPD_HEADER *npd)
 void forge_npd_dev_hash(unsigned char *klicensee, NPD_HEADER *npd)
 {
 	unsigned char key[0x10];
+	unsigned char dev[0x60];
 	unsigned char dev_hash[0x10];
 	memset(key, 0, 0x10);
+	memset(dev, 0, 0x60);
 	memset(dev_hash, 0, 0x10);
+
+	// Build the dev buffer (first 0x60 bytes of NPD header in big-endian).
+	memcpy(dev, npd, 0x60);
+
+	// Fix endianness.
+	int version = se32(npd->version);
+	int license = se32(npd->license);
+	int type = se32(npd->type);
+	memcpy(dev + 0x4, &version, 4);
+	memcpy(dev + 0x8, &license, 4);
+	memcpy(dev + 0xC, &type, 4);
 
 	// Generate klicensee xor key.
 	xor(key, klicensee, NPDRM_OMAC_KEY_2, 0x10);
 
 	// Forge with the generated key and create the dev hash.
-	cmac_hash_forge(key, 0x10, (unsigned char *)npd, 0x60, dev_hash);
+	cmac_hash_forge(key, 0x10, dev, 0x60, dev_hash);
 
 	// Write the key in the NPD header.
 	memcpy(npd->dev_hash, dev_hash, 0x10);
@@ -1077,27 +1104,29 @@ bool pack_data(FILE *input, FILE *output, const char* input_file_name, unsigned 
 	}
 
 	// Write forged NPD header.
-	int version_le = se32(NPD->version);
-	int license_le = se32(NPD->license);
-	int type_le = se32(NPD->type);
+	int version_be = se32(NPD->version);
+	int license_be = se32(NPD->license);
+	int type_be = se32(NPD->type);
+	u64 unk1_be = se64(NPD->unk1);
+	u64 unk2_be = se64(NPD->unk2);
 	fwrite(NPD->magic, sizeof(NPD->magic), 1, output);
-	fwrite(&version_le, sizeof(version_le), 1, output);
-	fwrite(&license_le, sizeof(license_le), 1, output);
-	fwrite(&type_le, sizeof(type_le), 1, output);
+	fwrite(&version_be, sizeof(version_be), 1, output);
+	fwrite(&license_be, sizeof(license_be), 1, output);
+	fwrite(&type_be, sizeof(type_be), 1, output);
 	fwrite(NPD->content_id, sizeof(NPD->content_id), 1, output);
 	fwrite(NPD->digest, sizeof(NPD->digest), 1, output);
 	fwrite(NPD->title_hash, sizeof(NPD->title_hash), 1, output);
 	fwrite(NPD->dev_hash, sizeof(NPD->dev_hash), 1, output);
-	fwrite(&NPD->unk1, sizeof(NPD->unk1), 1, output);
-	fwrite(&NPD->unk2, sizeof(NPD->unk2), 1, output);
+	fwrite(&unk1_be, sizeof(unk1_be), 1, output);
+	fwrite(&unk2_be, sizeof(unk2_be), 1, output);
 
 	// Write forged EDAT/SDAT header.
-	int flags_le = se32(EDAT->flags);
-	int block_size_le = se32(EDAT->block_size);
-	u64 file_size_le = se64(EDAT->file_size);
-	fwrite(&flags_le, sizeof(flags_le), 1, output);
-	fwrite(&block_size_le, sizeof(block_size_le), 1, output);
-	fwrite(&file_size_le, sizeof(file_size_le), 1, output);
+	int flags_be = se32(EDAT->flags);
+	int block_size_be = se32(EDAT->block_size);
+	u64 file_size_be = se64(EDAT->file_size);
+	fwrite(&flags_be, sizeof(flags_be), 1, output);
+	fwrite(&block_size_be, sizeof(block_size_be), 1, output);
+	fwrite(&file_size_be, sizeof(file_size_be), 1, output);
 
 	printf("Encrypting data...\n");
 	if (encrypt_data(input, output, EDAT, NPD, key, verbose))
@@ -1128,7 +1157,7 @@ void print_usage()
 	printf("Usage: make_npdata [-v] -e <input> <output> <version> <license> <type>\n");
 	printf("                           <format> <cID> <klic> <rap>\n");
 	printf("       make_npdata [-v] -d <input> <output> <klic> <rap>\n");
-	printf("       make_npdata [-v] -b <input> <source>\n\n");
+	printf("       make_npdata [-v] -b <input> <source> <step> <mode>\n\n");
 	printf("- Modes:\n");
 	printf("[-v]: Verbose mode\n");
 	printf("[-e]: Encryption mode\n");
@@ -1143,7 +1172,7 @@ void print_usage()
 	printf("<license>: 0 - Debug license (SDAT)\n");
 	printf("           1 - Network license (not supported)\n");
 	printf("           2 - Local license (uses RAP file as key)\n");
-	printf("           3 - Free license (uses klic as key\n");
+	printf("           3 - Free license (uses klic as key)\n");
 	printf("<type>:    00 - Common\n");
 	printf("           01 - PS2 EDAT\n");
 	printf("           20 - PSP Remasters\n");
@@ -1167,6 +1196,11 @@ void print_usage()
 	printf("\n");
 	printf("- Bruteforce mode:\n");
 	printf("<source>: ELF file source for klic\n");
+	printf("<step>: 1 - Byte\n");
+	printf("        2 - Halfword\n");
+	printf("        4 - Word\n");
+	printf("<mode>: 0 - Binary\n");
+	printf("        1 - Text\n");
 }
 
 int main(int argc, char **argv)
@@ -1189,7 +1223,7 @@ int main(int argc, char **argv)
 	}
 
 	// Check which mode we're using (encryption/decryption/bruteforce).
-	if ((!strcmp(argv[arg_offset + 1], "-e")) && (argc > 9))
+	if ((!strcmp(argv[arg_offset + 1], "-e")) && (argc > (arg_offset + 9)))
 	{
 		// Skip the mode argument.
 		arg_offset++;
@@ -1306,7 +1340,7 @@ int main(int argc, char **argv)
 		fclose(output);
 		return 0;
 	}
-	else if (!strcmp(argv[arg_offset + 1], "-d") && (argc > 5))
+	else if (!strcmp(argv[arg_offset + 1], "-d") && (argc > (arg_offset + 4)))
 	{
 		// Skip the mode argument.
 		arg_offset++;
@@ -1403,7 +1437,7 @@ int main(int argc, char **argv)
 		fclose(output);
 		return 0;
 	}
-	else if (!strcmp(argv[arg_offset + 1], "-b") && (argc > 2))
+	else if (!strcmp(argv[arg_offset + 1], "-b") && (argc > (arg_offset + 3)))
 	{
 		// Skip the mode argument.
 		arg_offset++;
@@ -1413,6 +1447,30 @@ int main(int argc, char **argv)
 		const char *source_file_name = argv[arg_offset + 2];
 		FILE* input = fopen(input_file_name, "rb");
 		FILE* source = fopen(source_file_name, "rb");
+
+		// Use user defined data length (1, 2 or 4).
+		int step = 4;
+		if ((argc > (arg_offset + 3)) && (argv[arg_offset + 3] != NULL))
+		{
+			step = atoi(argv[arg_offset + 3]);
+			if ((step != 1) && (step != 2) && (step != 4))
+			{
+				printf("ERROR: Invalid parameters!\n");
+				return 0;
+			}
+		}
+
+		// Read data as plain binary or as text (hexadecimal).
+		int mode = 0;
+		if ((argc > (arg_offset + 4)) && (argv[arg_offset + 4] != NULL))
+		{
+			mode = atoi(argv[arg_offset + 4]);
+			if ((mode != 0) && (mode != 1))
+			{
+				printf("ERROR: Invalid parameters!\n");
+				return 0;
+			}
+		}
 
 		// Get the source file size.
 		fseek(source, 0, SEEK_END);
@@ -1426,6 +1484,34 @@ int main(int argc, char **argv)
 		memset(test_key, 0, 0x10);
 		memset(test_klicensee, 0, 0x10);
 		memset(test_dev_hash, 0, 0x10);
+
+		// Buffer to handle klicensee as text.
+		char test_klicensee_text[0x21];
+		memset(test_klicensee_text, 0, 0x21);
+
+		// Read the file's header magic and seek back.
+		unsigned char magic[0x4];
+		fread(magic, 0x4, 1, input);
+		fseek(input, 0, SEEK_SET);
+
+		// If header starts with SCE, the file is a SELF or SPRX.
+		// If not, assume regular EDAT/SDAT (NPD).
+		unsigned char sce_magic[4] = {0x53, 0x43, 0x45, 0x00};  //SCE0
+		if(!memcmp(magic, sce_magic, 4))
+		{
+			// File is SCE, read the NPD dev_hash offset from the
+			// first 0x10 bytes of the SCE header and seek to the NPD area.	
+			unsigned char sce_header[0x10];
+			fread(sce_header, 0x10, 1, input);
+			short npd_offset = se16(*(short*)&sce_header[0xE]) - 0x60;
+			fseek(input, npd_offset, SEEK_SET);
+
+			if (verbose)
+			{
+				printf("SCE file detected!\n");
+				printf("NPD offset inside SCE: 0x%08x\n", npd_offset);
+			}
+		}
 
 		// Read the first 0x60 bytes of the NPD header.
 		unsigned char npd_buf[0x60];
@@ -1444,14 +1530,24 @@ int main(int argc, char **argv)
 		}
 
 		printf("Bruteforcing klic...\n");
-		
+
 		int i;
 		bool found = false;
-		for (i = 0; i < source_file_size; i += 4)
+		for (i = 0; i < source_file_size; i += step)
 		{
 			// Iterate the source file and generate klicensee xor key.
 			fseek(source, i, SEEK_SET);
-			fread(test_klicensee, 0x10, 1, source);
+
+			// If reading in text mode, convert the hexadecimal string to binary data.
+			if (mode)
+			{
+				fread(test_klicensee_text, 0x21, 1, source);
+				hex_to_bytes(test_klicensee, test_klicensee_text);
+				memset(test_klicensee_text, 0, 0x21);
+			}
+			else
+				fread(test_klicensee, 0x10, 1, source);
+
 			xor(test_key, test_klicensee, NPDRM_OMAC_KEY_2, 0x10);
 
 			if (cmac_hash_compare(test_key, 0x10, npd_buf, 0x60, test_dev_hash))

@@ -8,11 +8,19 @@
 #include "lz.h"
 
 typedef unsigned long long u64;
+typedef unsigned int u32;
+typedef unsigned short u16;
+typedef unsigned char u8;
 
 // Auxiliary functions (endian swap and xor).
+short se16(short i);
 int se32(int i);
 u64 se64(u64 i);
 void xor(unsigned char *dest, unsigned char *src1, unsigned char *src2, int size);
+
+// Hex string conversion auxiliary functions.
+u64 hex_to_u64(const char* hex_str);
+void hex_to_bytes(unsigned char *data, const char *hex_str);
 
 // Crypto functions (AES128-CBC, AES128-ECB, SHA1-HMAC and AES-CMAC).
 void aescbc128_decrypt(unsigned char *key, unsigned char *iv, unsigned char *in, unsigned char *out, int len);
