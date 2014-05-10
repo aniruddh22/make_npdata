@@ -3,8 +3,10 @@
 // http://www.gnu.org/licenses/gpl-3.0.txt
 
 #include "utils.h"
+#include <stdio.h>
+#include <time.h>
 
-// Auxiliary functions (endian swap and xor).
+// Auxiliary functions (endian swap, xor and prng).
 short se16(short i)
 {
 	return (((i & 0xFF00) >> 8) | ((i & 0xFF) << 8));
@@ -32,6 +34,20 @@ void xor(unsigned char *dest, unsigned char *src1, unsigned char *src2, int size
 	}
 }
 
+void prng(unsigned char *dest, int size)
+{
+    unsigned char *buffer = (unsigned char *) malloc (size);
+	srand((u32)time(0));
+
+	int i;
+	for(i = 0; i < size; i++)
+      buffer[i] = (unsigned char)(rand() & 0xFF);
+
+	memcpy(dest, buffer, size);
+
+	free(buffer);
+}
+
 // Hex string conversion auxiliary functions.
 u64 hex_to_u64(const char* hex_str)
 {
@@ -57,9 +73,8 @@ u64 hex_to_u64(const char* hex_str)
 	return result;
 }
 
-void hex_to_bytes(unsigned char *data, const char *hex_str)
+void hex_to_bytes(unsigned char *data, const char *hex_str, unsigned int str_length)
 {
-	u32 str_length = strlen(hex_str);
 	u32 data_length = str_length / 2;
 	char tmp_buf[3] = {0, 0, 0};
 
@@ -80,6 +95,23 @@ void hex_to_bytes(unsigned char *data, const char *hex_str)
 		// Copy back to our array.
 		memcpy(data, out, data_length);
 	}
+}
+
+bool is_hex(const char* hex_str, unsigned int str_length)
+{
+    static const char hex_chars[] = "0123456789abcdefABCDEF";
+
+    if (hex_str == NULL)
+        return false;
+
+    unsigned int i;
+    for (i = 0; i < str_length; i++)
+	{
+		if (strchr(hex_chars, hex_str[i]) == 0)
+			return false;
+	}
+
+    return true;
 }
 
 // Crypto functions (AES128-CBC, AES128-ECB, SHA1-HMAC and AES-CMAC).
@@ -145,7 +177,7 @@ bool cmac_hash_compare(unsigned char *key, int key_len, unsigned char *in, int i
 	aes_cmac(&ctx, in_len, in, out);
 
 	int i;
-	for (i = 0; i < key_len; i++)
+	for (i = 0; i < 0x10; i++)
 	{
 		if (out[i] != hash[i])
 		{
